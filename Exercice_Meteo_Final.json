@@ -1,0 +1,366 @@
+{
+  "name": "Exercice_Meteo_Final_Fix",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "435120f7-f95e-4728-8a9c-a949b184ff54",
+      "name": "When clicking 'Test workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        368,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  { json: { name: 'Paris', lat: 48.8566, lon: 2.3522 } },\n  { json: { name: 'Berlin', lat: 52.5200, lon: 13.4050 } },\n  { json: { name: 'Madrid', lat: 40.4168, lon: -3.7038 } },\n  { json: { name: 'Rome', lat: 41.9028, lon: 12.4964 } },\n  { json: { name: 'Amsterdam', lat: 52.3676, lon: 4.9041 } }\n];"
+      },
+      "id": "0ba5a99f-62d9-47fd-900b-d5453684ed39",
+      "name": "Villes_Initiales",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        576,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "849df651-51c4-44c4-aa69-a96e612f6573",
+      "name": "Split_Batch",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        800,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://air-quality-api.open-meteo.com/v1/air-quality?latitude={{ $json.lat }}&longitude={{ $json.lon }}&current=european_aqi",
+        "options": {}
+      },
+      "id": "a3112199-d60d-4eb2-954e-edd9a98a54eb",
+      "name": "API_Qualite_Air",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1024,
+        1456
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "b6689123-70dd-4af6-a95b-deea04d4d11f",
+      "name": "Merge_Sources",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1280,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const cityData = $node[\"Split_Batch\"].json;\nconst weather = $input.all()[0].json;\nconst aqiData = $input.all()[1] ? $input.all()[1].json : $input.all()[0].json;\n\nconst temp = weather.current.temperature_2m;\nconst wind = weather.current.wind_speed_10m;\nconst rain = weather.current.precipitation;\nconst aqi = aqiData.current.european_aqi || 0;\n\nlet tScore = (temp < 0 || temp > 35) ? 100 : Math.abs(temp - 17.5) * (100 / 17.5);\nlet wScore = Math.min(wind, 100);\nlet pScore = rain > 10 ? 100 : rain * 10;\nlet aScore = aqi;\n\nconst total = Math.round((tScore * 0.3) + (wScore * 0.25) + (pScore * 0.25) + (aScore * 0.2));\n\nlet level = 'VERT', emoji = '🟢';\nif (total > 80) { level = 'ROUGE'; emoji = '🔴'; }\nelse if (total > 60) { level = 'ORANGE'; emoji = '🟠'; }\nelse if (total > 30) { level = 'JAUNE'; emoji = '🟡'; }\n\nreturn {\n  city: cityData.name,\n  temperature: temp,\n  wind,\n  precipitation: rain,\n  aqi,\n  score: total,\n  level,\n  emoji,\n  timestamp: new Date().toISOString()\n};"
+      },
+      "id": "91e2512c-6858-45cd-9784-6bc604525f8d",
+      "name": "Calculer_Risque",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1504,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.level }}",
+              "value2": "ROUGE"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "63c5fb3e-cef5-4087-9346-2ad495101121",
+      "name": "IF_Rouge",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1728,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://webhook.site/76e7ccf5-8ad6-48b2-bf2a-21482e045ef2",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "city",
+              "value": "={{ $json.city }}"
+            },
+            {
+              "name": "score",
+              "value": "={{ $json.score }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c45bb466-1ff4-432a-948d-6233f65f171b",
+      "name": "Webhook_Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1936,
+        1312
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "7f2bb496-9b80-4d48-bad4-e956dff86595",
+      "name": "NoOp_Next",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1936,
+        1552
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "8f7a826e-b02e-4c7b-afc3-8d1141580873",
+      "name": "Rejoin_Loop",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        2208,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "57802c35-1fb5-4307-a492-7c2fe6db05c4",
+      "name": "Agreger_Villes",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        928,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.all().map(i => i.json);\nlet html = \"<html><body><h1>Rapport Météo</h1><table border='1'><tr><th>Ville</th><th>Score</th><th>Alerte</th></tr>\";\ndata.forEach(i => {\n  html += `<tr><td>${i.city}</td><td>${i.score}</td><td>${i.emoji} ${i.level}</td></tr>`;\n});\nhtml += \"</table></body></html>\";\nreturn { html, csv: \"Ville,Score\\n\" + data.map(i => `${i.city},${i.score}`).join(\"\\n\"), data };"
+      },
+      "id": "20c09b60-76a6-46c4-b2b1-cd7f889c253f",
+      "name": "Generer_Rapports",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1744
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://api.open-meteo.com/v1/forecast?latitude={{ $json.lat }}&longitude={{ $json.lon }}&current=temperature_2m,precipitation,wind_speed_10m",
+        "options": {}
+      },
+      "id": "d171704f-e051-4703-8ca7-83017eabf102",
+      "name": "API_Meteo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1056,
+        1200
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking 'Test workflow'": {
+      "main": [
+        [
+          {
+            "node": "Villes_Initiales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Villes_Initiales": {
+      "main": [
+        [
+          {
+            "node": "Split_Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split_Batch": {
+      "main": [
+        [
+          {
+            "node": "Agreger_Villes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "API_Meteo",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "API_Qualite_Air",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API_Qualite_Air": {
+      "main": [
+        [
+          {
+            "node": "Merge_Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge_Sources": {
+      "main": [
+        [
+          {
+            "node": "Calculer_Risque",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculer_Risque": {
+      "main": [
+        [
+          {
+            "node": "IF_Rouge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF_Rouge": {
+      "main": [
+        [
+          {
+            "node": "Webhook_Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "NoOp_Next",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook_Alert": {
+      "main": [
+        [
+          {
+            "node": "Rejoin_Loop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "NoOp_Next": {
+      "main": [
+        [
+          {
+            "node": "Rejoin_Loop",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Rejoin_Loop": {
+      "main": [
+        [
+          {
+            "node": "Split_Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agreger_Villes": {
+      "main": [
+        [
+          {
+            "node": "Generer_Rapports",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "API_Meteo": {
+      "main": [
+        [
+          {
+            "node": "Merge_Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "fe1a446d-d3e5-47e1-8fd8-786452974dc8",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b0214dcfd9eb2c7fd82cd2897213c951dbe2538768d89aef5a63986e715427ff"
+  },
+  "id": "ZteHbEQ6mUE8fD0k",
+  "tags": []
+}
